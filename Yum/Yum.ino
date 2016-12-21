@@ -6,19 +6,12 @@
 #include <PID_v1.h>
 #include <Servo.h>
 #include <Encoder.h>
-#include "Pizza.h"
-
-
-
+#include "Cheese.h"
 
 /*                                *
    ONLY CHANGE THIS WHEN RUNNING
  *                                */
 int target_distance = 900; //distance from start pt to end pt (cm)
-
-
-
-
 
 /** Not sure what this does but it looks legit **/
 // Data log
@@ -76,7 +69,7 @@ double drive_w = 0.0; //rad/s
 double last_drive_w = 0.0;
 
 // distance and position
-double drive_dist = 0; //cm
+double drive_d = 0; //cm
 
 double vehicle_pos = 0.0; //cm
 double last_pos = 0.0; //cm
@@ -92,14 +85,16 @@ float vehicle_vel = 0.0; //put a low pass on this guy
 // ESC command
 int esc_command = 1000;
 
+/******** Methods begin here *********/
 
+// TODO find out if we're doing a continuous curve or a triangle + curve
 void calculate_true_distance() {
   // math formula to change the 9-12m distance to the distance of the entire curve that it travels
   // target_distance = xxx;
 }
 
 
-void calculate_vehicle_velocity_average() {
+void calculate_vehicle_velocity_avg() {
   //in ms
   double time_interval = (previous_idler_thetas_timestamps[0] - previous_idler_thetas_timestamps[IDLER_T_MEMORY_SIZE - 1]);
 
@@ -114,7 +109,7 @@ void calculate_vehicle_velocity_average() {
   else
     vehicle_vel = idler_w * IDLER_RAD;
 
-  slip_ratio = drive_vel / EV_vel;
+  slip_ratio = drive_vel / vehicle_vel;
 }
 
 /* Assumptions: the stack is an array with index 0 as the top of the stack */
@@ -122,7 +117,7 @@ void push_value_to_stack(double target_array[], int array_size, double value) {
 
   // pushes all values down one index
   for (int i = array_size - 1; i >= 1; i--) {
-    target_array[i] = target_array[i - 1]
+    target_array[i] = target_array[i - 1];
   }
 
   //adds new value to the top of stack
@@ -132,7 +127,7 @@ void push_value_to_stack(double target_array[], int array_size, double value) {
 void calculate_vehicle_position() {
   // reads encoder values and calculates the drive and idler thetas
   drive_t = 2 * PI * (double) drive.read() / (COGS_PER_CYCLE * NUM_PHASES);
-  drive_t = GEARING * drive_theta;
+  drive_t = GEARING * drive_t;
 
   idler_t = 2 * PI * (double) idler.read() / (ENC_TICKS_PER_REV);
 
@@ -151,7 +146,7 @@ void calculate_vehicle_position() {
   }
 }
 
-/***** ALL HELPER METHODS BELOW THIS LINE ARE COPY-PASTED *****/
+/***** ALL METHODS BELOW THIS LINE UNTIL SETUP() ARE COPY-PASTED *****/
 
 // supposedly changes LEDs to match state ¯\_(ツ)_/¯
 void display_state_LED(int s) {
@@ -326,7 +321,7 @@ void print_log() {
   unsigned int j = 0;
   while (j <= log_index) {
     //Serial.print("State: ");
-    Serial.print(stateToString(data_log[j][0]) );
+    Serial.print(state_to_string(data_log[j][0]) );
     //Serial.print("\t ESC: ");
     Serial.print("\t" + String(data_log[j][1]));
     //Serial.print("\t Pos:");
@@ -361,7 +356,7 @@ void reset_vehicle_state() {
   drive_t = 0.0; //rads
   last_drive_t = 0.0;
 
-  last_position = 0;
+  last_pos = 0;
 
   for (int i = 0; i < IDLER_T_MEMORY_SIZE; i++) {
     previous_idler_thetas[i] = 0;
@@ -460,242 +455,239 @@ void loop() {
           current_state = WAIT_FOR_LAUNCH;
         }
         else {
-          Serial.println("Invalid target distance: " + dist);
+          Serial.println("Invalid target distance: " + target_distance);
           Serial.println("Restart the program");
         }
 
 
         start_slowing_dist = min(target_distance - DECEL_DIST, END_TIME);
         start_walk_dist = start_slowing_dist + DECEL_DIST;
+
+        break;
       }
+    case WAIT_FOR_LAUNCH:
+      {
+        esc_command = ESC_BRAKE; //brake
 
-      break;
-  }
+        // TODO figure out how to use serial
 
-case WAIT_FOR_LAUNCH:
-  {
-    esc_command = ESC_BRAKE; //brake
+        /*        // DEBUG LAUNCH. If a 'g' is sent via serial will launch
+                if (Serial && Serial.available() > 0) {
+                  char l = Serial.read();
+                  if(l=='g') {
+                    current_state = SPRINT;
+                    start_time = current_time; // set time when sprint starts
 
-    // TODO figure out how to use serial
+                    // reset encoders
+                    reset_vehicle_state();
+                  }
+                }
+        */
+        // polls the microswitch to see if should launch
+        int switch_state = digitalRead(SWITCH_PIN);
+        if (switch_state == LOW) {                    //high might pose a problem
+          Serial.println("Sprinting in 2 seconds");
 
-    /*        // DEBUG LAUNCH. If a 'g' is sent via serial will launch
-            if (Serial && Serial.available() > 0) {
-              char l = Serial.read();
-              if(l=='g') {
-                current_state = SPRINT;
-                start_time = current_time; // set time when sprint starts
+          // delay creates an annoying problem where current_time isn't updated
+          delay(2000);
+          current_state = SPRINT;
 
-                // reset encoders
-                reset_vehicle_state();
-              }
-            }
-    */
-    // polls the microswitch to see if should launch
-    int switch_state = digitalRead(SWITCH_PIN);
-    if (switch_state == LOW) {                    //high might pose a problem
-      Serial.println("Sprinting in 2 seconds");
+          current_time = millis();
+          start_time = current_time;
 
-      // delay creates an annoying problem where current_time isn't updated
-      delay(2000);
-      current_state = SPRINT;
-
-      current_time = millis();
-      start_time = current_time;
-
-      reset_vehicle_state();
-    }
-    break;
-  }
-
-  // TODO change to accomodate for the bonus
-  // TODO change target_distance to true_distance
-case SPRINT:
-  {
-
-    if (prev_state != WAIT_FOR_LAUNCH && prev_state != SPRINT) {
-      // BAD NEWS BEARS
-      Serial.println("Wrong previous state!!");
-      break;
-    }
-
-    if (prev_state == WAIT_FOR_LAUNCH) {
-      Serial.println("Start time: " + start_time);
-      start_time = current_time;
-    }
-
-    // time since start of sprinting
-    time_since_start = current_time - start_time;
-
-    // if just passed start time distance set start time
-    if (vehicle_pos > START_TIME && start_run_time == 0) {
-      start_run_time = current_time;
-    }
-    // if just passed end time distance set stop time
-    if (vehicle_pos > END_TIME && final_run_time == 0)  {
-      final_run_time = current_time;
-    }
-    // if in between, update current run time
-    if (vehicle_pos > START_TIME && vehicle_pos < END_TIME) {
-      current_run_time = current_time - start_run_time;
-    }
-
-
-    /***** ACCELERATION SUB STATE *****/
-    if (vehicle_pos < ACCEL_DIST) { //still accelerating to max
-      esc_command = map(sqrt(vehicle_pos), 0, sqrt(ACCEL_DIST), ESC_BRAKE + 40, ESC_MAX);
-      // by making v(t) =  k*sqrt(x(t)) then x(t) = a*t^2
-      // maps 0 to accel dist to 1540 to max esc, MIGHT SKID OUT
-
-    }
-    /***** CONSTANT MAX SPEED SUB STATE *****/
-    else if (vehicle_pos >= ACCEL_DIST && vehicle_pos < start_slowing_dist) {
-      // go full speed
-      esc_command = ESC_MAX;
-    }
-
-    /***** DECEL SUB STATE *****/
-    else if (vehicle_pos >= start_slowing_dist) {
-      /**** TRANSITION TO WALK *****/
-      // If in the decel period but you're stopped then go to walk mode
-      // DANGER: The distance the car will overshoot/travel during decel is totally
-      // unpredictable!! Car could travel too far if target is 9m
-      // DANGER: If vehicle_vel is incorrectly calculated / there is an error, vehicle
-      // may transition to walk prematurely
-      if (vehicle_vel < SPRINT_VEL_THRESHOLD) {
-        current_state = WALK;
-      }
-      else {
-        if (vehicle_pos < start_slowing_dist + 50) {
-          esc_command = map(vehicle_pos, start_slowing_dist, start_slowing_dist + 50, ESC_MAX, ESC_DECEL);
-        } else {
-          // coast with drag brake command
-          esc_command = ESC_DECEL;
+          reset_vehicle_state();
         }
+        break;
       }
-    }
-    /******* TRANSITION TO WALK SUB STATE ******/
-    else { //shouldn't get here with coast to stop logic
-      current_state = WALK;
-      esc_command = ESC_BRAKE;
-    }
 
-    /***** SAFETY CHECKS *****/
-    // Idler check
-    if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
-      current_state = BRAKING;
-      Serial.println("vehicle_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup");
-    }
+    // TODO change to accomodate for the bonus
+    // TODO change target_distance to true_distance
+    case SPRINT:
+      {
 
-    // Check wheel (drive) position
-    if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
-      current_state = BRAKING;
-      Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup / slipping");
-    }
+        if (prev_state != WAIT_FOR_LAUNCH && prev_state != SPRINT) {
+          // BAD NEWS BEARS
+          Serial.println("Wrong previous state!!");
+          break;
+        }
 
-    // Check if time is too much
-    if (time_since_start > MAX_SPRINT_TIME * 1000) {
-      current_state = BRAKING;
-      Serial.println("sprinting more than " + String(MAX_SPRINT_TIME) + "s. Big fuckup");
-    }
+        if (prev_state == WAIT_FOR_LAUNCH) {
+          Serial.println("Start time: " + start_time);
+          start_time = current_time;
+        }
 
-    if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
-      current_state = BRAKING;
-      Serial.println("Diff in vehicle_pos and drive_d > 100. Big fuckup");
-    }
+        // time since start of sprinting
+        time_since_start = current_time - start_time;
 
-    break;
+        // if just passed start time distance set start time
+        if (vehicle_pos > START_TIME && start_run_time == 0) {
+          start_run_time = current_time;
+        }
+        // if just passed end time distance set stop time
+        if (vehicle_pos > END_TIME && final_run_time == 0)  {
+          final_run_time = current_time;
+        }
+        // if in between, update current run time
+        if (vehicle_pos > START_TIME && vehicle_pos < END_TIME) {
+          current_run_time = current_time - start_run_time;
+        }
+
+
+        /***** ACCELERATION SUB STATE *****/
+        if (vehicle_pos < ACCEL_DIST) { //still accelerating to max
+          esc_command = map(sqrt(vehicle_pos), 0, sqrt(ACCEL_DIST), ESC_BRAKE + 40, ESC_MAX);
+          // by making v(t) =  k*sqrt(x(t)) then x(t) = a*t^2
+          // maps 0 to accel dist to 1540 to max esc, MIGHT SKID OUT
+
+        }
+        /***** CONSTANT MAX SPEED SUB STATE *****/
+        else if (vehicle_pos >= ACCEL_DIST && vehicle_pos < start_slowing_dist) {
+          // go full speed
+          esc_command = ESC_MAX;
+        }
+
+        /***** DECEL SUB STATE *****/
+        else if (vehicle_pos >= start_slowing_dist) {
+          /**** TRANSITION TO WALK *****/
+          // If in the decel period but you're stopped then go to walk mode
+          // DANGER: The distance the car will overshoot/travel during decel is totally
+          // unpredictable!! Car could travel too far if target is 9m
+          // DANGER: If vehicle_vel is incorrectly calculated / there is an error, vehicle
+          // may transition to walk prematurely
+          if (vehicle_vel < SPRINT_VEL_THRESHOLD) {
+            current_state = WALK;
+          }
+          else {
+            if (vehicle_pos < start_slowing_dist + 50) {
+              esc_command = map(vehicle_pos, start_slowing_dist, start_slowing_dist + 50, ESC_MAX, ESC_DECEL);
+            } else {
+              // coast with drag brake command
+              esc_command = ESC_DECEL;
+            }
+          }
+        }
+        /******* TRANSITION TO WALK SUB STATE ******/
+        else { //shouldn't get here with coast to stop logic
+          current_state = WALK;
+          esc_command = ESC_BRAKE;
+        }
+
+        /***** SAFETY CHECKS *****/
+        // Idler check
+        if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("vehicle_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup");
+        }
+
+        // Check wheel (drive) position
+        if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup / slipping");
+        }
+
+        // Check if time is too much
+        if (time_since_start > MAX_SPRINT_TIME * 1000) {
+          current_state = BRAKING;
+          Serial.println("sprinting more than " + String(MAX_SPRINT_TIME) + "s. Big fuckup");
+        }
+
+        if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("Diff in vehicle_pos and drive_d > 100. Big fuckup");
+        }
+
+        break;
+      }
+
+
+    // TODO change target_distance to true_distance
+    case WALK:
+      {
+        // time since start of sprinting
+        time_since_start = current_time - start_time;
+
+        // if going fast, like right out of sprint, then brake hella (takes ~ 90ms to switch into reverse)
+        if (vehicle_vel > 500) {
+          esc_command = ESC_MIN;
+        }
+
+        // if close to target and velocity isn't much then brake
+        else if (abs(vehicle_pos - target_distance) < DIST_THRESHOLD
+                 && abs(vehicle_vel) < VEL_THRESHOLD) {
+          current_state = BRAKING;
+        }
+
+        // this year, you can't go backwards
+        else {
+          if (vehicle_pos < target_distance - DIST_THRESHOLD) {
+            esc_command = 1500 + WALK_COMMAND;
+          }
+          else {
+            esc_command = 1500;
+          }
+        }
+
+        /***** WALK SAFETY CHECKS *****/
+
+        if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("Diff in EV_pos and drive_d > " + String(MAX_SLIP_ALLOWED) + ". Big fuckup");
+        }
+
+        if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("EV_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup");
+        }
+
+        // Check wheel (drive) position
+        if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
+          current_state = BRAKING;
+          Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup / slipping");
+        }
+
+        break;
+      }
+
+    case BRAKING:
+      {
+        esc_command = ESC_BRAKE;
+
+        // necessary hack to ensure the esc is sent the brake command before the delay (10 seconds)
+        esc.writeMicroseconds(esc_command);
+
+        /* testing detaching esc */
+        delay(1000);
+        esc.detach();
+        print_log();
+        delay(10000);  //wait 10 seconds between consecutive prints of the log
+        break;
+
+      }
+
+    default:
+      break;
   }
-}
 
+  // write the esc command
+  esc.writeMicroseconds(esc_command);
 
-// TODO change target_distance to true_distance
-case WALK:
-{
-  // time since start of sprinting
-  time_since_start = current_time - start_time;
-
-  // if going fast, like right out of sprint, then brake hella (takes ~ 90ms to switch into reverse)
-  if (vehicle_vel > 500) {
-    esc_command = ESC_MIN;
+  // Print state if it's in a new position or new state and if enough time has passed since last print
+  if ((vehicle_pos != last_pos || prev_state != current_state) && (current_time - last_print) > PRINT_PERIOD) {
+    print_state();
+    log_state();
+    last_print = current_time;
+  }
+  if (prev_state != current_state) {
+    display_state_LED(current_state);
   }
 
-  // if close to target and velocity isn't much then brake
-  else if (abs(vehicle_pos - target_distance) < DIST_THRESHOLD
-           && abs(vehicle_vel) < VEL_THRESHOLD) {
-    current_state = BRAKING;
-  }
+  // update previous state and position
+  prev_state = current_state;
+  last_pos = vehicle_pos;
 
-  // this year, you can't go backwards
-  else {
-    if (vehicle_pos < target_distance - DIST_THRESHOLD) {
-      esc_command = 1500 + WALK_COMMAND;
-    }
-    else {
-      esc_command = 1500;
-    }
-  }
-
-  /***** WALK SAFETY CHECKS *****/
-
-  if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
-    current_state = BRAKING;
-    Serial.println("Diff in EV_pos and drive_d > " + String(MAX_SLIP_ALLOWED) + ". Big fuckup");
-  }
-
-  if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
-    current_state = BRAKING;
-    Serial.println("EV_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup");
-  }
-
-  // Check wheel (drive) position
-  if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
-    current_state = BRAKING;
-    Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup / slipping");
-  }
-
-  break;
-}
-
-case BRAKING:
-{
-  esc_command = ESC_BRAKE;
-
-  // necessary hack to ensure the esc is sent the brake command before the delay (10 seconds)
-  esc.writeMicroseconds(esc_comm);
-
-  /* testing detaching esc */
-  delay(1000);
-  esc.detach();
-  print_log();
-  delay(10000);  //wait 10 seconds between consecutive prints of the log
-  break;
-
-}
-
-default:
-break;
-}
-
-// write the esc command
-esc.writeMicroseconds(esc_comm);
-
-// Print state if it's in a new position or new state and if enough time has passed since last print
-if ((vehicle_pos != last_position || prev_state != cur_state) && (current_time - last_print) > PRINT_PERIOD) {
-  print_state();
-  log_state();
-  last_print = current_time;
-}
-if (prev_state != current_state) {
-  display_state_LED(current_state);
-}
-
-// update previous state and position
-prev_state = current_state;
-last_position = vehicle_pos;
-
-// arbitrary delay so teensy can send serial
-// teensy is so fast that loop time w/o delay is < 0.5 ms
-delay(1);
+  // arbitrary delay so teensy can send serial
+  // teensy is so fast that loop time w/o delay is < 0.5 ms
+  delay(1);
 
 }
 

@@ -19,7 +19,6 @@
 
 // 1700 is good
 #define ESC_MAX 1700
-//#define ESC_MAX 1800
 
 // esc command to use when coasting
 #define ESC_DECEL 1500
