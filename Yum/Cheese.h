@@ -2,6 +2,9 @@
 
 // add ifdef and ifndef statements
 
+
+#define CAR_WIDTH 10 //cm
+
 /** DEBUGGING FLAGS */
 /*
    If testing on the bench, use 1 so EV_pos is determined by the rear encoder.

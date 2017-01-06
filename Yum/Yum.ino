@@ -87,11 +87,19 @@ int esc_command = 1000;
 
 /******** Methods begin here *********/
 
-// TODO find out if we're doing a continuous curve or a triangle + curve
+// assumes vehicle takes a straight path to the cans, then curves to the final point
 void calculate_true_distance() {
-  // math formula to change the 9-12m distance to the distance of the entire curve that it travels
-  // target_distance = xxx;
+  double a = 100 - CAR_WIDTH; //aims for middle of cans
+  double b = target_distance /2; //half of the assigned distance
+  
+  double part1 = sqrt(pow(a,2) + pow(b,2)); //straight-line distance from start to cans
+                                            // calculated as sqrt(a^2+b^2)
+
+  double part2 = PI/2 *sqrt((pow(a,2) + pow(b,2))/2)); //curve from cans to final
+                                                       // calculated as 1/4 * circumference of ellipse
+  total_distance = part1 + part2; //"true" distance
 }
+
 
 
 void calculate_vehicle_velocity_avg() {
