@@ -92,9 +92,8 @@ void calculate_true_distance() {
   double a = 100 - CAR_WIDTH; //aims for middle of cans
   double b = target_distance /2; //half of the assigned distance
   
-  double total_distance = PI *sqrt((pow(a,2) + pow(b,2))/2); //curve from cans to final
+  total_distance = PI *sqrt((pow(a,2) + pow(b,2))/2); //curve from cans to final
                                                     // calculated as 1/2 * circumference of ellipse
-  total_distance = part1 + part2; //"true" distance
 }
 
 
