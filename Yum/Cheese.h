@@ -3,7 +3,7 @@
 // add ifdef and ifndef statements
 
 
-#define CAR_WIDTH 10 //cm
+#define CAR_WIDTH 16 //cm
 
 /** DEBUGGING FLAGS */
 /*

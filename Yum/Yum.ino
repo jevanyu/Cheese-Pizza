@@ -1,6 +1,6 @@
 /*
-   AUTHOR:
-
+   AUTHOR: Andrew Shieh, Jevan Yu
+   PURPOSE: run fast zoom zoom
 */
 
 #include <PID_v1.h>
@@ -394,7 +394,8 @@ void setup() {
   delay(2000);
 }
 
-void loop() {
+
+void loop() {  
   // time calculations
   current_time = millis();
   elapsed_time = current_time - last_time;
@@ -602,7 +603,6 @@ void loop() {
 
         break;
       }
-
 
     // TODO change target_distance to true_distance
     case WALK:
