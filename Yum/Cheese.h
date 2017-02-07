@@ -3,7 +3,9 @@
 // add ifdef and ifndef statements
 
 
-#define CAR_WIDTH 16 //cm
+#define CAN_WIDTH 16 //cm
+#define RUN_TIME 10 //seconds
+
 
 /** DEBUGGING FLAGS */
 /*
@@ -55,7 +57,7 @@ int ACCEL_DIST = (ESC_MAX-ESC_BRAKE)*(ESC_MAX-ESC_BRAKE) / (2*EV_ACCELERATION); 
 // Sanity checks
 #define MAX_OVERSHOOT_ALLOWED 400 // cm
 #define MAX_SLIP_ALLOWED 400 // cm
-#define MAX_SPRINT_TIME 10 // seconds
+#define MAX_SPRINT_TIME 20 // seconds
 
 
 // velocity threshold in which to transition from sprint-coast to walk
@@ -64,7 +66,7 @@ int ACCEL_DIST = (ESC_MAX-ESC_BRAKE)*(ESC_MAX-ESC_BRAKE) / (2*EV_ACCELERATION); 
 // offset from 1500 to use during forward / backward walk
 // 28 is good for rubber wheel
 // testing 25 on banebot wheels
-#define WALK_COMMAND 25 // pwm
+#define WALK_COMMAND 37 // pwm
 
 // LOG
 #define LOG_SIZE 2000  // number of addresses in the memlogging array
@@ -77,7 +79,6 @@ int ACCEL_DIST = (ESC_MAX-ESC_BRAKE)*(ESC_MAX-ESC_BRAKE) / (2*EV_ACCELERATION); 
 #define SPRINT 3 // green
 #define WALK 4  // green and red
 #define BRAKING 5  // red
-#define TURN 6
 
 
 /** WIRING CONFIGURATION */

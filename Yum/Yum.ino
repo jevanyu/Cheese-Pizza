@@ -13,7 +13,6 @@
  *                                */
 int target_distance = 900; //distance from start pt to end pt (cm)
 
-/** Not sure what this does but it looks legit **/
 // Data log
 unsigned short data_log[LOG_SIZE][LOG_PARAMS];
 unsigned short log_index = 0; //counter for data_log
@@ -42,7 +41,7 @@ unsigned long final_run_time = 0; //time when vehicle passed 8.5m since hit 0.5m
 unsigned long last_vel_calc = 0; //time (in ms) of last velocity calculation
 unsigned long last_print = 0; //time (in ms) of last print
 
-int total_distance; //true distance it travels
+int true_distance; //true distance it travels
 int start_slowing_dist;
 int start_walk_dist;
 
@@ -89,13 +88,12 @@ int esc_command = 1000;
 
 // assumes vehicle takes a straight path to the cans, then curves to the final point
 void calculate_true_distance() {
-  double a = 100 - CAR_WIDTH; //aims for middle of cans
+  double a = 100 - CAN_WIDTH; //aims for middle of cans
   double b = target_distance /2; //half of the assigned distance
   
-  total_distance = PI *sqrt((pow(a,2) + pow(b,2))/2); //curve from cans to final
-                                                    // calculated as 1/2 * circumference of ellipse
+  true_distance = PI *sqrt((pow(a,2) + pow(b,2))/2); //curve from cans to final
+                                                      // calculated as 1/2 * circumference of ellipse
 }
-
 
 
 void calculate_vehicle_velocity_avg() {
@@ -129,30 +127,39 @@ void push_value_to_stack(double target_array[], int array_size, double value) {
 }
 
 void calculate_vehicle_position() {
-  // reads encoder values and calculates the drive and idler thetas
+  /*
+   * Reads the encoder values and calculates the drive and idler positions
+   */
   drive_t = 2 * PI * (double) drive.read() / (COGS_PER_CYCLE * NUM_PHASES);
   drive_t = GEARING * drive_t;
 
   idler_t = 2 * PI * (double) idler.read() / (ENC_TICKS_PER_REV);
 
   // push new idler theta and drive theta into the memory stack
-  push_value_to_stack(previous_idler_thetas, IDLER_T_MEMORY_SIZE, idler_t);
+  push_value_to_stack(previous_idler_thetas,IDLER_T_MEMORY_SIZE,idler_t);
   push_value_to_stack(previous_drive_thetas, IDLER_T_MEMORY_SIZE, drive_t);
 
-  // pushes times to the time stack
-  push_value_to_stack(previous_idler_thetas_timestamps, IDLER_T_MEMORY_SIZE, (double)current_time);
+  // TODO may run into problem casting unsigned long current_time to double
+  push_value_to_stack(previous_idler_thetas_timestamps,IDLER_T_MEMORY_SIZE,(double)current_time);
 
-  vehicle_pos = idler_t * IDLER_RAD;
+  //Serial.println("prev drive t: " + String(previous_drive_thetas[0]));
+  
+  vehicle_pos = drive_t * WHEEL_RAD;
   drive_d = drive_t * WHEEL_RAD;
+  //vehicle_pos = idler_t * IDLER_RAD;
 
-  if (ENC_DEBUG) {
+  // DEBUG DEBUG DEBUG DEBUG
+  if(ENC_DEBUG) {
     vehicle_pos = drive_d;
   }
+
+  //double K = 1.0; // 1.0 means no weight to past, 0 is dumb, 0.7 prob good
+  //vehicleVelocity = K*measuredVelocity + (1-K)*vehicleVelocity; // low pass filter to smooth velocity
 }
 
 /***** ALL METHODS BELOW THIS LINE UNTIL SETUP() ARE COPY-PASTED *****/
 
-// supposedly changes LEDs to match state ¯\_(ツ)_/¯
+// supposedly changes LEDs to match state
 void display_state_LED(int s) {
   digitalWrite(RED_PIN, LOW);
   digitalWrite(YELLOW_PIN, LOW);
@@ -211,21 +218,7 @@ String state_to_string(int s) {
   }
 }
 
-// supposedly prints out the vehicle's current state ¯\_(ツ)_/¯
-void print_state() {
-  String state_str = "state: " + state_to_string(current_state);
-  state_str += "\t ESC: " + String(esc_command);
-  state_str += "\t position:" + String(vehicle_pos);
-  state_str += "\t velocity: " + String(vehicle_vel);
-  state_str += "\t drive_d: " + String(drive_d);
-  state_str += "\t run time: " + String(current_run_time);
-  state_str += "\t loop time: " + String(elapsed_time);
-  state_str += "\t time: " + String(current_time);
-
-  Serial.println(state_str);
-}
-
-// supposedly logs state to memory? ¯\_(ツ)_/¯
+// supposedly logs state to memory?
 void log_state() {
   /*
      SUPER JANKY CODE FOR LOGGING TO MEMORY
@@ -278,73 +271,6 @@ void calc_slip(unsigned short log[][LOG_PARAMS], unsigned short slip[]) {
   }
 }
 
-// not even sure if we need this
-// TODO change scoring variable
-void print_log() {
-  delay(200);
-  Serial.flush();
-
-  unsigned short slip[log_index];
-  calc_slip(data_log, slip);
-  double maximum_slip = array_max(slip, log_index);
-
-  double maximum_vel_slip = max_in_log(data_log, 7);
-
-  double furthest_position = max_in_log(data_log, 2);
-
-  int distance_score = abs(data_log[log_index - 1][2] - target_distance);
-  double score = current_run_time * 10.0 / 1000.0 + distance_score;
-
-  //for(int k=0; k<100;k++) Serial.print("_");
-  Serial.println("BEGIN LOG\n");
-  Serial.println("Run Stats:");
-  Serial.print("Run time: " + String(current_run_time));
-  Serial.println("\tDistance score: " + String(distance_score));
-  Serial.println("Score: " + String(score) + " + 10±5");
-
-  Serial.print("Target dist: " + String(target_distance));
-  Serial.print("\tStop dist: " + String(data_log[log_index][2]));
-  Serial.print("\tFurthest Pos: " + String(furthest_position));
-  Serial.print("\tMax dist slip: " + String(maximum_slip));
-  Serial.print("\tMax vel slip: " + String(maximum_vel_slip));
-
-  Serial.println("\nParameters:");
-  Serial.println("Debug flag: " + String(ENC_DEBUG));
-  Serial.println("Accel parameter: " + String(EV_ACCELERATION));
-  Serial.println("Accel dist: " + String(ACCEL_DIST));
-  Serial.println("DECEL dist: " + String(DECEL_DIST));
-  Serial.println("Accel dist: " + String(ACCEL_DIST));
-  Serial.println("ESC max: " + String(ESC_MAX));
-  Serial.println("ESC decel: " + String(ESC_DECEL));
-  Serial.println("Walk command: " + String(WALK_COMMAND));
-  Serial.println("Idler rad: " + String(IDLER_RAD, 4));
-  Serial.println("Wheel rad: " + String(WHEEL_RAD, 4));
-
-  Serial.println("State\tESC\tPos\tDrive_d\tEV_vel\tRun Time\tTime since start\tVel-Slip");
-
-  unsigned int j = 0;
-  while (j <= log_index) {
-    //Serial.print("State: ");
-    Serial.print(state_to_string(data_log[j][0]) );
-    //Serial.print("\t ESC: ");
-    Serial.print("\t" + String(data_log[j][1]));
-    //Serial.print("\t Pos:");
-    Serial.print("\t" + String(data_log[j][2]));
-    //Serial.print("\t Drive_d: ");
-    Serial.print("\t" + String(data_log[j][3]));
-    //Serial.print("\t EV_vel: ");
-    Serial.print("\t" + String(data_log[j][4]));
-    //Serial.print("\t Run Time: ");
-    Serial.print("\t" + String(data_log[j][5]));
-    //Serial.print("\t Current time: ");
-    Serial.print("\t" + String(data_log[j][6]));
-    Serial.print("\t" + String(data_log[j][7]));
-    Serial.println();
-    j++;
-  }
-  Serial.println("\n\nEND LOG\n\n\n");
-}
-
 // NOT SURE IF RESETS EVERYTHING
 void reset_vehicle_state() {
   drive.write(0);
@@ -374,6 +300,7 @@ void setup() {
   // put your setup code here, to run once: ok
 
   Serial.begin(115200);
+  
   Serial.println("Starting...");
   last_time = millis();
   esc.attach(ESC_PIN);
@@ -407,120 +334,58 @@ void loop() {
 
   /* SAFETY CHECK: goes into brake mode if elapsed time > 20s  */
   // TODO fine tune time needed
-  if (time_since_start > 20 * 1000 && !ENC_DEBUG) {
+  if (time_since_start > RUN_TIME * 1000 && !ENC_DEBUG) {
     current_state = BRAKING;
-    Serial.println("Total time since start is more than 20 seconds");
+    Serial.println("Total time since start is more than " + String(RUN_TIME) + " seconds");
   }
 
-  // game plan:
-  // 1. begin in initialize
-  // 2. wait for target distance setting
-  // 3. wait for launch button
-  // 4. sprint until target distance or so
-  // 5. walk around to fine tune the distance
-  // 6. stop
 
   switch (current_state) {
     case INITIALIZE:
       {
-        Serial.println("Initialization done. Waiting for distance...");
-        current_state = WAIT_FOR_DISTANCE;
+        Serial.println("Initialization done");
+        Serial.print("target distance: " + String(target_distance));   
+
+        calculate_true_distance();
+
+        Serial.println(", true distance: " + String(true_distance));
+             
         esc_command = ESC_BRAKE; //brake
-        break;
-      }
 
-    case WAIT_FOR_DISTANCE:
-      {
-        esc_command = ESC_BRAKE; //brake
-
-        //TODO find a way to send distances over serial
-
-        /*        // Check if a distance has been sent over serial and validate the number
-                if (Serial && Serial.available() > 0) {
-                  int dist = Serial.parseInt(); // will throw an error if not an int ** should contain in try catch
-
-                  if (dist >= MIN_VALID_DIST && dist <= MAX_VALID_DIST) { // 50cm for reginals
-                    target_distance = dist;
-                    Serial.print("Target distance set: ");
-                    Serial.println(target_distance);
-                    current_state = WAIT_FOR_LAUNCH;
-                  } else {
-                    Serial.println("Invalid target distance: " + dist);
-                    current_state = WAIT_FOR_DISTANCE;
-                    Serial.flush();
-                  }
-        */
-
-        if (target_distance >= MIN_VALID_DIST && target_distance <= MAX_VALID_DIST) { // 50cm for reginals
-          Serial.print("Target distance set: ");
-          Serial.println(target_distance);
-
-          Serial.print("Total distance to travel: ");
-          Serial.println(total_distance);
-          current_state = WAIT_FOR_LAUNCH;
-        }
-        else {
-          Serial.println("Invalid target distance: " + target_distance);
-          Serial.println("Restart the program");
-        }
-
-
-        start_slowing_dist = min(target_distance - DECEL_DIST, END_TIME);
+        start_slowing_dist = min(true_distance - DECEL_DIST, END_TIME);
         start_walk_dist = start_slowing_dist + DECEL_DIST;
 
+        Serial.println(start_slowing_dist); Serial.println(start_walk_dist);
+
+        
+        current_state = WAIT_FOR_LAUNCH;
         break;
       }
     case WAIT_FOR_LAUNCH:
       {
         esc_command = ESC_BRAKE; //brake
 
-        // TODO figure out how to use serial
-
-        /*        // DEBUG LAUNCH. If a 'g' is sent via serial will launch
-                if (Serial && Serial.available() > 0) {
-                  char l = Serial.read();
-                  if(l=='g') {
-                    current_state = SPRINT;
-                    start_time = current_time; // set time when sprint starts
-
-                    // reset encoders
-                    reset_vehicle_state();
-                  }
-                }
-        */
         // polls the microswitch to see if should launch
         int switch_state = digitalRead(SWITCH_PIN);
-        if (switch_state == LOW) {                    //high might pose a problem
-          Serial.println("Sprinting in 2 seconds");
+        if (switch_state == LOW) {                    // high might pose a problem
+          Serial.println("Sprinting in 3 seconds...");
 
           // delay creates an annoying problem where current_time isn't updated
-          delay(2000);
-          current_state = SPRINT;
+          delay(3000);
 
           current_time = millis();
           start_time = current_time;
 
           reset_vehicle_state();
+
+          current_state = SPRINT;
+
         }
         break;
       }
 
-    // TODO change to accomodate for the bonus
-    // TODO change target_distance to true_distance
     case SPRINT:
       {
-
-        if (prev_state != WAIT_FOR_LAUNCH && prev_state != SPRINT) {
-          // BAD NEWS BEARS
-          Serial.println("Wrong previous state!!");
-          break;
-        }
-
-        if (prev_state == WAIT_FOR_LAUNCH) {
-          Serial.println("Start time: " + start_time);
-          start_time = current_time;
-        }
-
         // time since start of sprinting
         time_since_start = current_time - start_time;
 
@@ -541,13 +406,13 @@ void loop() {
         /***** ACCELERATION SUB STATE *****/
         if (vehicle_pos < ACCEL_DIST) { //still accelerating to max
           esc_command = map(sqrt(vehicle_pos), 0, sqrt(ACCEL_DIST), ESC_BRAKE + 40, ESC_MAX);
+                      
           // by making v(t) =  k*sqrt(x(t)) then x(t) = a*t^2
           // maps 0 to accel dist to 1540 to max esc, MIGHT SKID OUT
 
         }
         /***** CONSTANT MAX SPEED SUB STATE *****/
         else if (vehicle_pos >= ACCEL_DIST && vehicle_pos < start_slowing_dist) {
-          // go full speed
           esc_command = ESC_MAX;
         }
 
@@ -565,7 +430,8 @@ void loop() {
           else {
             if (vehicle_pos < start_slowing_dist + 50) {
               esc_command = map(vehicle_pos, start_slowing_dist, start_slowing_dist + 50, ESC_MAX, ESC_DECEL);
-            } else {
+            }
+            else {
               // coast with drag brake command
               esc_command = ESC_DECEL;
             }
@@ -579,26 +445,26 @@ void loop() {
 
         /***** SAFETY CHECKS *****/
         // Idler check
-        if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
+        if (vehicle_pos > true_distance + MAX_OVERSHOOT_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("vehicle_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup");
+          Serial.println("vehicle_pos > " + String(true_distance + MAX_OVERSHOOT_ALLOWED));
         }
 
         // Check wheel (drive) position
-        if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
+        if (drive_d > true_distance + MAX_OVERSHOOT_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + ". Big fuckup / slipping");
+          Serial.println("drive_d > " + String(true_distance + MAX_OVERSHOOT_ALLOWED) + ". slipping");
         }
 
         // Check if time is too much
         if (time_since_start > MAX_SPRINT_TIME * 1000) {
           current_state = BRAKING;
-          Serial.println("sprinting more than " + String(MAX_SPRINT_TIME) + "s. Big fuckup");
+          Serial.println("sprinting more than " + String(MAX_SPRINT_TIME) + "s.");
         }
 
         if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("Diff in vehicle_pos and drive_d > 100. Big fuckup");
+          Serial.println("Diff in vehicle_pos and drive_d > 100.");
         }
 
         break;
@@ -612,22 +478,28 @@ void loop() {
 
         // if going fast, like right out of sprint, then brake hella (takes ~ 90ms to switch into reverse)
         if (vehicle_vel > 500) {
+          Serial.println("break break break break");
           esc_command = ESC_MIN;
         }
 
         // if close to target and velocity isn't much then brake
-        else if (abs(vehicle_pos - target_distance) < DIST_THRESHOLD
+        else if (abs(vehicle_pos - true_distance) < DIST_THRESHOLD
                  && abs(vehicle_vel) < VEL_THRESHOLD) {
           current_state = BRAKING;
         }
 
         // this year, you can't go backwards
         else {
-          if (vehicle_pos < target_distance - DIST_THRESHOLD) {
-            esc_command = 1500 + WALK_COMMAND;
+          if (vehicle_pos < true_distance - DIST_THRESHOLD) {
+
+            Serial.println("pos " + String(vehicle_pos)); Serial.println(String(true_distance - DIST_THRESHOLD));
+            esc_command = ESC_BRAKE + WALK_COMMAND;
+
+            Serial.println("esc " + String(esc_command));
           }
           else {
-            esc_command = 1500;
+            // went over
+            esc_command = ESC_BRAKE;
           }
         }
 
@@ -635,18 +507,18 @@ void loop() {
 
         if (abs(vehicle_pos - drive_d) > MAX_SLIP_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("Diff in EV_pos and drive_d > " + String(MAX_SLIP_ALLOWED) + ". Big fuckup");
+          Serial.println("Diff in EV_pos and drive_d > " + String(MAX_SLIP_ALLOWED) + ".");
         }
 
-        if (vehicle_pos > target_distance + MAX_OVERSHOOT_ALLOWED) {
+        if (vehicle_pos > true_distance + MAX_OVERSHOOT_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("EV_pos > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup");
+          Serial.println("EV_pos > " + String(true_distance + MAX_OVERSHOOT_ALLOWED) + " during walk.");
         }
 
         // Check wheel (drive) position
-        if (drive_d > target_distance + MAX_OVERSHOOT_ALLOWED) {
+        if (drive_d > true_distance + MAX_OVERSHOOT_ALLOWED) {
           current_state = BRAKING;
-          Serial.println("drive_d > " + String(target_distance + MAX_OVERSHOOT_ALLOWED) + " during walk. Big fuckup / slipping");
+          Serial.println("drive_d > " + String(true_distance + MAX_OVERSHOOT_ALLOWED) + " during walk./ slipping");
         }
 
         break;
@@ -662,7 +534,6 @@ void loop() {
         /* testing detaching esc */
         delay(1000);
         esc.detach();
-        print_log();
         delay(10000);  //wait 10 seconds between consecutive prints of the log
         break;
 
@@ -677,7 +548,9 @@ void loop() {
 
   // Print state if it's in a new position or new state and if enough time has passed since last print
   if ((vehicle_pos != last_pos || prev_state != current_state) && (current_time - last_print) > PRINT_PERIOD) {
-    print_state();
+    Serial.println(state_to_string(current_state));
+    Serial.println(String(vehicle_pos));
+    
     log_state();
     last_print = current_time;
   }
@@ -689,6 +562,8 @@ void loop() {
   prev_state = current_state;
   last_pos = vehicle_pos;
 
+
+  
   // arbitrary delay so teensy can send serial
   // teensy is so fast that loop time w/o delay is < 0.5 ms
   delay(1);
